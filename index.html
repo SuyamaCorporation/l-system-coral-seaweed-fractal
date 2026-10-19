@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L-System Coral and Seaweed Fractal Canvas</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: #020d1a; }
+  input[type=range] { accent-color: #06b6d4; }
+  canvas { display: block; }
+</style>
+</head>
+<body class="text-gray-200 min-h-screen flex flex-col items-center p-4">
+<h1 class="text-2xl font-bold text-cyan-400 mb-1">L-System Coral & Seaweed Fractal</h1>
+<p class="text-gray-500 text-sm mb-3">String rewriting + turtle graphics — underwater branching structures</p>
+
+<div class="flex flex-col lg:flex-row gap-4 w-full max-w-6xl">
+  <div class="relative flex-shrink-0">
+    <canvas id="canvas" width="700" height="580" class="rounded-xl border border-cyan-900" aria-label="L-system fractal visualization"></canvas>
+    <div id="loading" class="absolute inset-0 flex items-center justify-center bg-black/60 rounded-xl hidden">
+      <span class="text-cyan-300 text-lg">Rendering...</span>
+    </div>
+  </div>
+
+  <div class="flex flex-col gap-3 min-w-[230px]">
+    <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+      <h2 class="text-cyan-300 font-semibold mb-3">Preset</h2>
+      <div class="flex flex-col gap-2" id="presetBtns" role="group" aria-label="L-system presets"></div>
+    </div>
+
+    <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+      <h2 class="text-cyan-300 font-semibold mb-3">Parameters</h2>
+
+      <label class="block text-xs text-gray-400 mb-1">Depth: <span id="depthVal" class="text-cyan-300 font-mono">4</span></label>
+      <input type="range" id="depthSlider" min="1" max="7" step="1" value="4" class="w-full mb-3" aria-label="L-system depth">
+
+      <label class="block text-xs text-gray-400 mb-1">Angle variation: <span id="angleVarVal" class="text-cyan-300 font-mono">0°</span></label>
+      <input type="range" id="angleVarSlider" min="0" max="15" step="0.5" value="0" class="w-full mb-3" aria-label="Angle variation">
+
+      <label class="block text-xs text-gray-400 mb-1">Line length: <span id="lenVal" class="text-cyan-300 font-mono">8</span></label>
+      <input type="range" id="lenSlider" min="2" max="20" step="1" value="8" class="w-full mb-3" aria-label="Line length">
+
+      <label class="flex items-center gap-2 text-xs text-gray-400 mb-3 cursor-pointer">
+        <input type="checkbox" id="animateCheck" checked class="accent-cyan-500" aria-label="Animate drawing"> Animate drawing
+      </label>
+
+      <div class="flex gap-2">
+        <button id="renderBtn" class="flex-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg py-2 text-sm font-semibold transition">Render</button>
+        <button id="randomBtn" class="flex-1 bg-teal-700 hover:bg-teal-600 text-white rounded-lg py-2 text-sm font-semibold transition">Random</button>
+      </div>
+    </div>
+
+    <div class="bg-gray-900 rounded-xl p-4 border border-gray-800 text-xs text-gray-400">
+      <p id="presetDesc" class="leading-relaxed"></p>
+      <p class="mt-2 font-mono text-gray-500" id="axiomDisplay"></p>
+      <p class="mt-1 font-mono text-gray-500 text-xs" id="rulesDisplay"></p>
+    </div>
+
+    <!-- Pan/zoom hint -->
+    <div class="text-xs text-gray-600 text-center">Scroll to zoom · Drag to pan</div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+const PRESETS = [
+  {
+    name: '🪸 Coral Branching',
+    axiom: 'F',
+    rules: { F: 'FF-[-F+F+F]+[+F-F-F]' },
+    angle: 22.5,
+    maxDepth: 5,
+    desc: 'Classic coral branching. Self-similar recursive structure typical of sea coral.',
+    startY: 0.95, startAngle: 90
+  },
+  {
+    name: '🌿 Seaweed',
+    axiom: 'F',
+    rules: { F: 'F[+F]F[-F]F' },
+    angle: 25.7,
+    maxDepth: 5,
+    desc: 'Seaweed-like plant. Creates flowing, organic branching with alternating sub-branches.',
+    startY: 0.95, startAngle: 90
+  },
+  {
+    name: '🍀 Kelp',
+    axiom: 'X',
+    rules: { X: 'F-[[X]+X]+F[+FX]-X', F: 'FF' },
+    angle: 22.5,
+    maxDepth: 6,
+    desc: 'Kelp plant structure. Uses two symbols for complex, realistic seaweed growth.',
+    startY: 0.95, startAngle: 90
+  },
+  {
+    name: '🌸 Sea Fan',
+    axiom: 'FFFF',
+    rules: { F: 'F[+F][-F]' },
+    angle: 30,
+    maxDepth: 5,
+    desc: 'Sea fan / gorgonian coral. Symmetrical fan-like branching structure.',
+    startY: 0.95, startAngle: 90
+  },
+  {
+    name: '🌾 Bush',
+    axiom: 'Y',
+    rules: { X: 'X[-FFF][+FFF]FX', Y: 'YFX[+Y][-Y]' },
+    angle: 25,
+    maxDepth: 6,
+    desc: 'Compact bush / shrub structure with layered branching at multiple scales.',
+    startY: 0.95, startAngle: 90
+  },
+  {
+    name: '🌱 Barnsley Variant',
+    axiom: 'X',
+    rules: { X: 'F+[[X]-X]-F[-FX]+X', F: 'FF' },
+    angle: 22.5,
+    maxDepth: 6,
+    desc: 'Barnsley fern variant with different angle. Resembles tropical foliage more than the classic fern.',
+    startY: 0.95, startAngle: 90
+  }
+];
+
+let currentPreset = 0;
+let depth = 4, angleVar = 0, lineLen = 8, doAnimate = true;
+let panX = 0, panY = 0, zoom = 1;
+let dragging = false, lastMX = 0, lastMY = 0;
+let animHandle = null, animSegments = [], animIdx = 0;
+
+// Build preset buttons
+const presetBtns = document.getElementById('presetBtns');
+PRESETS.forEach((p, i) => {
+  const btn = document.createElement('button');
+  btn.textContent = p.name;
+  btn.className = 'text-left px-3 py-2 rounded-lg text-sm transition ' + (i === 0 ? 'bg-cyan-800 text-cyan-100' : 'bg-gray-800 hover:bg-gray-700 text-gray-300');
+  btn.addEventListener('click', () => {
+    currentPreset = i;
+    presetBtns.querySelectorAll('button').forEach((b, j) => {
+      b.className = 'text-left px-3 py-2 rounded-lg text-sm transition ' + (j === i ? 'bg-cyan-800 text-cyan-100' : 'bg-gray-800 hover:bg-gray-700 text-gray-300');
+    });
+    updatePresetInfo();
+    render();
+  });
+  presetBtns.appendChild(btn);
+});
+
+function rewriteLSystem(axiom, rules, depth) {
+  let s = axiom;
+  for (let i = 0; i < depth; i++) {
+    let next = '';
+    for (const c of s) { next += (rules[c] || c); }
+    s = next;
+    if (s.length > 300000) break; // Safety
+  }
+  return s;
+}
+
+function buildSegments(str, angle, startLen, startY, startAngle) {
+  const segs = [];
+  const stack = [];
+  let x = canvas.width / 2, y = canvas.height * startY;
+  let a = startAngle; // degrees
+  const len = startLen;
+
+  for (const c of str) {
+    if (c === 'F' || c === 'G') {
+      const rad = (a - 90) * Math.PI / 180;
+      const nx = x + Math.cos(rad) * len;
+      const ny = y + Math.sin(rad) * len;
+      segs.push({ x1: x, y1: y, x2: nx, y2: ny });
+      x = nx; y = ny;
+    } else if (c === 'f') {
+      const rad = (a - 90) * Math.PI / 180;
+      x += Math.cos(rad) * len; y += Math.sin(rad) * len;
+    } else if (c === '+') {
+      const v = angleVar > 0 ? (Math.random() - 0.5) * 2 * angleVar : 0;
+      a += angle + v;
+    } else if (c === '-') {
+      const v = angleVar > 0 ? (Math.random() - 0.5) * 2 * angleVar : 0;
+      a -= angle + v;
+    } else if (c === '[') {
+      stack.push([x, y, a]);
+    } else if (c === ']') {
+      if (stack.length) { [x, y, a] = stack.pop(); }
+    }
+  }
+  return segs;
+}
+
+function getColor(segIdx, total) {
+  const t = segIdx / total;
+  // Deep brown/red at base → green → cyan at tips
+  const r = Math.round(80 + (1 - t) * 100);
+  const g = Math.round(120 + t * 100);
+  const b = Math.round(40 + t * 160);
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawAll(segs) {
+  ctx.fillStyle = '#020d1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-canvas.width / 2, -canvas.height / 2);
+  segs.forEach((s, i) => {
+    ctx.strokeStyle = getColor(i, segs.length);
+    ctx.lineWidth = Math.max(0.3, 1.5 - (i / segs.length) * 1.2);
+    ctx.beginPath();
+    ctx.moveTo(s.x1, s.y1);
+    ctx.lineTo(s.x2, s.y2);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function render() {
+  cancelAnimationFrame(animHandle);
+  const p = PRESETS[currentPreset];
+  const d = Math.min(depth, p.maxDepth);
+  const str = rewriteLSystem(p.axiom, p.rules, d);
+  animSegments = buildSegments(str, p.angle, lineLen, p.startY, p.startAngle);
+  panX = 0; panY = 0; zoom = 1;
+
+  if (!doAnimate) {
+    drawAll(animSegments);
+    return;
+  }
+  // Animate
+  animIdx = 0;
+  ctx.fillStyle = '#020d1a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  function drawNext() {
+    const batch = Math.max(1, Math.floor(animSegments.length / 200));
+    for (let i = 0; i < batch && animIdx < animSegments.length; i++, animIdx++) {
+      const s = animSegments[animIdx];
+      ctx.save();
+      ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      ctx.strokeStyle = getColor(animIdx, animSegments.length);
+      ctx.lineWidth = Math.max(0.3, 1.5 - (animIdx / animSegments.length) * 1.2);
+      ctx.beginPath(); ctx.moveTo(s.x1, s.y1); ctx.lineTo(s.x2, s.y2); ctx.stroke();
+      ctx.restore();
+    }
+    if (animIdx < animSegments.length) animHandle = requestAnimationFrame(drawNext);
+  }
+  animHandle = requestAnimationFrame(drawNext);
+}
+
+function updatePresetInfo() {
+  const p = PRESETS[currentPreset];
+  document.getElementById('presetDesc').textContent = p.desc;
+  document.getElementById('axiomDisplay').textContent = 'Axiom: ' + p.axiom;
+  const rText = Object.entries(p.rules).map(([k,v]) => `${k} → ${v}`).join('\n');
+  document.getElementById('rulesDisplay').textContent = rText;
+  // Clamp depth
+  const maxD = p.maxDepth;
+  const dSlider = document.getElementById('depthSlider');
+  dSlider.max = maxD;
+  if (parseInt(dSlider.value) > maxD) { dSlider.value = maxD; depth = maxD; document.getElementById('depthVal').textContent = maxD; }
+}
+
+// Controls
+document.getElementById('depthSlider').addEventListener('input', e => {
+  depth = parseInt(e.target.value);
+  document.getElementById('depthVal').textContent = depth;
+});
+document.getElementById('angleVarSlider').addEventListener('input', e => {
+  angleVar = parseFloat(e.target.value);
+  document.getElementById('angleVarVal').textContent = angleVar.toFixed(1) + '°';
+});
+document.getElementById('lenSlider').addEventListener('input', e => {
+  lineLen = parseInt(e.target.value);
+  document.getElementById('lenVal').textContent = lineLen;
+});
+document.getElementById('animateCheck').addEventListener('change', e => { doAnimate = e.target.checked; });
+document.getElementById('renderBtn').addEventListener('click', render);
+document.getElementById('randomBtn').addEventListener('click', () => {
+  angleVar = Math.random() * 12;
+  document.getElementById('angleVarSlider').value = angleVar;
+  document.getElementById('angleVarVal').textContent = angleVar.toFixed(1) + '°';
+  render();
+});
+
+// Pan & zoom
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom *= e.deltaY < 0 ? 1.1 : 0.9;
+  zoom = Math.max(0.1, Math.min(10, zoom));
+  if (animSegments.length) drawAll(animSegments);
+}, { passive: false });
+canvas.addEventListener('mousedown', e => { dragging = true; lastMX = e.clientX; lastMY = e.clientY; });
+canvas.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  panX += e.clientX - lastMX; panY += e.clientY - lastMY;
+  lastMX = e.clientX; lastMY = e.clientY;
+  if (animSegments.length) drawAll(animSegments);
+});
+canvas.addEventListener('mouseup', () => { dragging = false; });
+canvas.addEventListener('mouseleave', () => { dragging = false; });
+
+// Init
+updatePresetInfo();
+render();
+</script>
+</body>
+</html>
